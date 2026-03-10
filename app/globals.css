@@ -80,3 +80,33 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .hero-gradient {
+    background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.4), transparent 55%),
+      radial-gradient(circle at bottom right, rgba(147, 51, 234, 0.35), transparent 55%),
+      radial-gradient(circle at top, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 1));
+    background-size: 200% 200%;
+    animation: hero-gradient 20s ease-in-out infinite;
+  }
+
+  @keyframes hero-gradient {
+    0% {
+      background-position: 0% 0%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 0%;
+    }
+  }
+
+  .fade-section {
+    @apply opacity-0 translate-y-4;
+  }
+
+  .fade-section-visible {
+    @apply opacity-100 translate-y-0;
+  }
+}

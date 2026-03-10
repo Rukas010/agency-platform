@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase, type Client, type ChatbotConfig } from '@/lib/supabase';
 import { getReseller } from '@/lib/auth';
 import { Loader2, MessageCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const INDUSTRY_TEMPLATES = [
   'Dental',
@@ -61,6 +62,7 @@ export default function ChatbotsPage() {
   const [saving, setSaving] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     async function initialize() {
@@ -171,9 +173,18 @@ export default function ChatbotsPage() {
 
       if (upsertError) throw upsertError;
       setConfig(data as ChatbotConfig);
+      toast({
+        title: 'Chatbot configuration saved',
+        description: 'Your chatbot settings have been updated.',
+      });
     } catch (err: any) {
       console.error('Error saving chatbot config:', err);
       setError(err.message || 'Failed to save chatbot configuration.');
+      toast({
+        title: 'Failed to save chatbot',
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }

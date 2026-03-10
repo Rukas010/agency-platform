@@ -38,6 +38,7 @@ import {
   User,
   Sparkles,
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 type CampaignFormState = {
   campaign_name: string;
@@ -75,6 +76,7 @@ export default function ReviewsPage() {
     Record<string, ContactFormState>
   >({});
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     async function initialize() {
@@ -196,9 +198,18 @@ export default function ReviewsPage() {
 
       setCampaignDialogOpen(false);
       await loadCampaigns(selectedClientId);
+      toast({
+        title: 'Campaign created',
+        description: 'Your review campaign has been created successfully.',
+      });
     } catch (err: any) {
       console.error('Error creating campaign:', err);
       setError(err.message || 'Failed to create campaign.');
+      toast({
+        title: 'Failed to create campaign',
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setCreatingCampaign(false);
     }
@@ -247,6 +258,11 @@ export default function ReviewsPage() {
     } catch (err: any) {
       console.error('Error adding contact:', err);
       setError(err.message || 'Failed to add contact.');
+      toast({
+        title: 'Failed to add contact',
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
     }
   }
 
@@ -256,6 +272,10 @@ export default function ReviewsPage() {
       setSendingRequests(true);
       // This is a placeholder for actual sending logic (SMS/email integration).
       await new Promise((resolve) => setTimeout(resolve, 800));
+      toast({
+        title: 'Review requests sent',
+        description: 'Your review requests are being processed.',
+      });
     } finally {
       setSendingRequests(false);
     }

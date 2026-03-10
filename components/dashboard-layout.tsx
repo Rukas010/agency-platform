@@ -59,7 +59,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gray-950 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),transparent_55%),radial-gradient(circle_at_bottom,_rgba(147,51,234,0.1),transparent_55%)]">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -78,8 +78,20 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {/* Logo/Brand */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-white" />
+              <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center overflow-hidden border border-gray-800">
+                {reseller?.agency_logo_url ? (
+                  <img
+                    src={reseller.agency_logo_url}
+                    alt={reseller.agency_name || 'Agency logo'}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold text-white">
+                    {reseller?.agency_name
+                      ? reseller.agency_name.charAt(0).toUpperCase()
+                      : <Building2 className="h-4 w-4 text-white" />}
+                  </span>
+                )}
               </div>
               <div>
                 <div className="text-sm font-semibold text-white truncate">
@@ -119,15 +131,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* Sign out */}
-          <div className="p-3 border-t border-gray-800">
+          <div className="p-3 border-t border-gray-800 space-y-2">
             <Button
               variant="ghost"
-              className="w-full justify-start text-gray-400 hover:text-white hover:bg-gray-800"
+              className="w-full justify-start text-gray-400 hover:text-white hover:bg-gray-800 transition-colors duration-200"
               onClick={handleSignOut}
             >
               <LogOut className="h-5 w-5 mr-3" />
               Sign Out
             </Button>
+            <div className="pt-1 border-t border-gray-800 text-[10px] text-gray-500 text-center">
+              Powered by <span className="font-semibold text-gray-300">AgencyKit</span>
+            </div>
           </div>
         </div>
       </aside>
@@ -135,23 +150,35 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top bar for mobile */}
-        <div className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800 lg:hidden">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-gray-400 hover:text-white"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-          <div className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center">
-              <Building2 className="h-4 w-4 text-white" />
+          <div className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800 lg:hidden">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="text-gray-400 hover:text-white"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            <div className="flex items-center space-x-2">
+              <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center overflow-hidden border border-gray-800">
+                {reseller?.agency_logo_url ? (
+                  <img
+                    src={reseller.agency_logo_url}
+                    alt={reseller.agency_name || 'Agency logo'}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold text-white">
+                    {reseller?.agency_name
+                      ? reseller.agency_name.charAt(0).toUpperCase()
+                      : <Building2 className="h-4 w-4 text-white" />}
+                  </span>
+                )}
+              </div>
+              <span className="text-sm font-semibold text-white">
+                {reseller?.agency_name}
+              </span>
             </div>
-            <span className="text-sm font-semibold text-white">
-              {reseller?.agency_name}
-            </span>
+            <div className="w-6" />
           </div>
-          <div className="w-6" />
-        </div>
 
         {/* Page content */}
         <main className="min-h-screen">{children}</main>

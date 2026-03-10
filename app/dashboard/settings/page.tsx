@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase, type Reseller } from '@/lib/supabase';
 import { getReseller } from '@/lib/auth';
 import { Loader2, Upload } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 type SettingsFormState = {
   agency_name: string;
@@ -22,6 +23,7 @@ type SettingsFormState = {
   plan: Reseller['plan'];
   logoFile?: File | null;
   accountEmail: string;
+  agency_logo_url: string | null;
 };
 
 export default function SettingsPage() {
@@ -31,11 +33,14 @@ export default function SettingsPage() {
     plan: 'free',
     logoFile: null,
     accountEmail: '',
+    agency_logo_url: null,
   });
+  const [resellerId, setResellerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     async function loadSettings() {
@@ -46,6 +51,8 @@ export default function SettingsPage() {
           setError('You must be signed in to manage account settings.');
           return;
         }
+
+        setResellerId(reseller.id);
 
         const {
           data: { user },
@@ -60,6 +67,7 @@ export default function SettingsPage() {
           primary_color: reseller.primary_color || '#2563eb',
           plan: reseller.plan,
           accountEmail: user?.email || '',
+          agency_logo_url: reseller.agency_logo_url || null,
         }));
       } catch (err: any) {
         console.error('Error loading settings:', err);
@@ -93,9 +101,18 @@ export default function SettingsPage() {
       if (updateError) throw updateError;
 
       setSuccess('Settings saved successfully.');
+      toast({
+        title: 'Settings saved',
+        description: 'Your agency branding has been updated.',
+      });
     } catch (err: any) {
       console.error('Error saving settings:', err);
       setError(err.message || 'Failed to save settings.');
+      toast({
+        title: 'Failed to save settings',
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -212,9 +229,19 @@ export default function SettingsPage() {
                         Upload logo
                       </p>
                       <p className="text-xs text-gray-400">
-                        PNG or SVG, up to 2MB. This is stored locally for now;
-                        connect storage to persist uploads.
+                        PNG, JPG or SVG, up to 2MB. Stored securely in Supabase
+                        Storage.
                       </p>
+                      {form.agency_logo_url && (
+                        <div className="mt-3 flex items-center gap-3">
+                          <span className="text-xs text-gray-400">Current logo</span>
+                          <img
+                            src={form.agency_logo_url}
+                            alt="Agency logo"
+                            className="h-10 w-10 rounded-md border border-gray-700 bg-gray-900 object-cover"
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       {form.logoFile && (
@@ -227,11 +254,84 @@ export default function SettingsPage() {
                         <span>Choose file</span>
                         <input
                           type="file"
-                          accept="image/png,image/svg+xml,image/jpeg"
+                          accept="image/png,image/jpeg,image/jpg,image/svg+xml"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0] || null;
+                            if (!file) return;
+
+                            setError(null);
+                            setSuccess(null);
+
+                            const allowedTypes = [
+                              'image/png',
+                              'image/jpeg',
+                              'image/jpg',
+                              'image/svg+xml',
+                            ];
+
+                            if (!allowedTypes.includes(file.type)) {
+                              setError('Logo must be a PNG, JPG, or SVG image.');
+                              return;
+                            }
+
+                            const maxSize = 2 * 1024 * 1024; // 2MB
+                            if (file.size > maxSize) {
+                              setError('Logo file is too large. Max size is 2MB.');
+                              return;
+                            }
+
+                            if (!resellerId) {
+                              setError('No reseller profile found for logo upload.');
+                              return;
+                            }
+
                             setForm((prev) => ({ ...prev, logoFile: file }));
+
+                            try {
+                              const ext =
+                                file.name.split('.').pop()?.toLowerCase() || 'png';
+                              const path = `${resellerId}/logo.${ext}`;
+
+                              const { error: uploadError } = await supabase.storage
+                                .from('logos')
+                                .upload(path, file, { upsert: true });
+
+                              if (uploadError) {
+                                throw uploadError;
+                              }
+
+                              const {
+                                data: { publicUrl },
+                              } = supabase.storage.from('logos').getPublicUrl(path);
+
+                              const { error: updateError } = await supabase
+                                .from('resellers')
+                                .update({ agency_logo_url: publicUrl })
+                                .eq('id', resellerId);
+
+                              if (updateError) throw updateError;
+
+                              setForm((prev) => ({
+                                ...prev,
+                                agency_logo_url: publicUrl,
+                              }));
+                              setSuccess('Logo uploaded successfully.');
+                              toast({
+                                title: 'Logo uploaded',
+                                description: 'Your agency logo has been updated.',
+                              });
+                            } catch (err: any) {
+                              console.error('Error uploading logo:', err);
+                              setError(
+                                err.message || 'Failed to upload logo. Please try again.'
+                              );
+                              toast({
+                                title: 'Failed to upload logo',
+                                description: 'Please try again.',
+                                variant: 'destructive',
+                              });
+                            }
                           }}
                         />
                       </label>

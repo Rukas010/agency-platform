@@ -6,25 +6,101 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectLabel,
+} from '@/components/ui/select';
 import { Plus, Search, CreditCard as Edit, Trash2, Building2, Mail, Phone, Globe } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getReseller } from '@/lib/auth';
 import type { Client } from '@/lib/supabase';
+import { useToast } from '@/hooks/use-toast';
 
-const businessTypes = [
-  'Dentist',
-  'Plumber',
-  'Restaurant',
-  'Law Firm',
-  'Auto Repair',
-  'Salon',
-  'Real Estate',
-  'Other',
-];
+const businessTypeCategories: Record<string, string[]> = {
+  'Health & Medical': [
+    'Dentist',
+    'Chiropractor',
+    'Physiotherapist',
+    'Optician',
+    'Veterinarian',
+    'Doctor / GP',
+    'Mental Health Practice',
+  ],
+  'Home Services': [
+    'Plumber',
+    'Electrician',
+    'HVAC / Heating',
+    'Roofing',
+    'Landscaping',
+    'Cleaning Service',
+    'Pest Control',
+    'Locksmith',
+    'Handyman',
+  ],
+  Automotive: ['Auto Repair / Mechanic', 'Car Wash', 'MOT Centre', 'Tyre Shop'],
+  'Food & Hospitality': [
+    'Restaurant',
+    'Cafe / Coffee Shop',
+    'Takeaway',
+    'Pub / Bar',
+    'Bakery',
+    'Catering',
+  ],
+  'Beauty & Wellness': [
+    'Hair Salon / Barber',
+    'Beauty Salon',
+    'Nail Salon',
+    'Spa / Massage',
+    'Tattoo Studio',
+    'Personal Trainer / Gym',
+  ],
+  'Professional Services': [
+    'Solicitor / Law Firm',
+    'Accountant',
+    'Estate Agent',
+    'Insurance Broker',
+    'Financial Advisor',
+    'Mortgage Broker',
+  ],
+  'Property & Construction': [
+    'Builder',
+    'Architect',
+    'Interior Designer',
+    'Removal Company',
+    'Self Storage',
+  ],
+  'Education & Care': [
+    'Nursery / Childcare',
+    'Tutoring',
+    'Driving School',
+    'Dog Grooming / Pet Care',
+  ],
+  Other: [
+    'Photography',
+    'Florist',
+    'Dry Cleaner',
+    'Tailor',
+    'Funeral Director',
+    'Other',
+  ],
+};
+
+const ALL_BUSINESS_TYPES = Object.values(businessTypeCategories).flat();
 
 export default function ClientsPage() {
+  const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
   const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +108,8 @@ export default function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [resellerId, setResellerId] = useState<string>('');
+  const [businessTypeQuery, setBusinessTypeQuery] = useState('');
+  const [customBusinessType, setCustomBusinessType] = useState('');
   const [formData, setFormData] = useState({
     business_name: '',
     business_type: '',
@@ -103,9 +181,10 @@ export default function ClientsPage() {
 
   function openEditDialog(client: Client) {
     setEditingClient(client);
+    const isKnownType = ALL_BUSINESS_TYPES.includes(client.business_type);
     setFormData({
       business_name: client.business_name,
-      business_type: client.business_type,
+      business_type: isKnownType ? client.business_type : 'Other',
       phone: client.phone || '',
       email: client.email || '',
       website: client.website || '',
@@ -114,6 +193,7 @@ export default function ClientsPage() {
       state: client.state || '',
       google_review_link: client.google_review_link || '',
     });
+    setCustomBusinessType(isKnownType ? '' : client.business_type);
     setDialogOpen(true);
   }
 
@@ -121,26 +201,39 @@ export default function ClientsPage() {
     e.preventDefault();
 
     try {
+      const businessTypeToSave =
+        formData.business_type === 'Other' && customBusinessType.trim()
+          ? customBusinessType.trim()
+          : formData.business_type;
+
       if (editingClient) {
         const { error } = await supabase
           .from('clients')
-          .update(formData)
+          .update({ ...formData, business_type: businessTypeToSave })
           .eq('id', editingClient.id);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('clients')
-          .insert([{ ...formData, reseller_id: resellerId }]);
+          .insert([{ ...formData, business_type: businessTypeToSave, reseller_id: resellerId }]);
 
         if (error) throw error;
       }
 
       setDialogOpen(false);
       loadClients();
+      toast({
+        title: editingClient ? 'Client updated' : 'Client added',
+        description: 'Changes have been saved successfully.',
+      });
     } catch (error) {
       console.error('Error saving client:', error);
-      alert('Failed to save client');
+      toast({
+        title: 'Failed to save client',
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
     }
   }
 
@@ -154,7 +247,11 @@ export default function ClientsPage() {
       loadClients();
     } catch (error) {
       console.error('Error deleting client:', error);
-      alert('Failed to delete client');
+      toast({
+        title: 'Failed to delete client',
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
     }
   }
 
@@ -174,7 +271,7 @@ export default function ClientsPage() {
         </Button>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-6 space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
@@ -183,6 +280,20 @@ export default function ClientsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 bg-gray-900 border-gray-800 text-white placeholder:text-gray-500 transition-colors duration-200 focus:border-gray-700"
           />
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="space-y-1">
+            <Label htmlFor="business_type_filter" className="text-gray-300 text-xs">
+              Filter business types
+            </Label>
+            <Input
+              id="business_type_filter"
+              placeholder="Search business categories..."
+              value={businessTypeQuery}
+              onChange={(e) => setBusinessTypeQuery(e.target.value)}
+              className="bg-gray-900 border-gray-800 text-white placeholder:text-gray-500 transition-colors duration-200 focus:border-gray-700"
+            />
+          </div>
         </div>
       </div>
 
@@ -313,21 +424,62 @@ export default function ClientsPage() {
                 </Label>
                 <Select
                   value={formData.business_type}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, business_type: value })
-                  }
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, business_type: value });
+                    if (value !== 'Other') {
+                      setCustomBusinessType('');
+                    }
+                  }}
                 >
                   <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700">
-                    {businessTypes.map((type) => (
-                      <SelectItem key={type} value={type} className="text-white">
-                        {type}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="bg-gray-900 border-gray-800 max-h-80">
+                    {Object.entries(businessTypeCategories).map(
+                      ([category, types]) => {
+                        const filtered = types.filter((type) =>
+                          type
+                            .toLowerCase()
+                            .includes(businessTypeQuery.toLowerCase())
+                        );
+                        if (filtered.length === 0) return null;
+                        return (
+                          <div key={category}>
+                            <SelectLabel className="px-2 py-1 text-xs font-semibold text-gray-400">
+                              {category}
+                            </SelectLabel>
+                            {filtered.map((type) => (
+                              <SelectItem
+                                key={type}
+                                value={type}
+                                className="text-white"
+                              >
+                                {type}
+                              </SelectItem>
+                            ))}
+                          </div>
+                        );
+                      }
+                    )}
                   </SelectContent>
                 </Select>
+                {formData.business_type === 'Other' && (
+                  <div className="mt-3 space-y-1">
+                    <Label
+                      htmlFor="custom_business_type"
+                      className="text-gray-300 text-xs"
+                    >
+                      Custom Business Type
+                    </Label>
+                    <Input
+                      id="custom_business_type"
+                      placeholder="e.g. Mobile Car Valeting"
+                      value={customBusinessType}
+                      onChange={(e) => setCustomBusinessType(e.target.value)}
+                      className="bg-gray-800 border-gray-700 text-white"
+                    />
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
