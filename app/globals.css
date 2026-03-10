@@ -109,4 +109,38 @@
   .fade-section-visible {
     @apply opacity-100 translate-y-0;
   }
+
+  .fade-in-up {
+    animation: fadeInUp 0.4s ease-out forwards;
+  }
+
+  .fade-in-up-delayed-1 {
+    animation: fadeInUp 0.5s ease-out forwards;
+    animation-delay: 0.05s;
+  }
+
+  .fade-in-up-delayed-2 {
+    animation: fadeInUp 0.5s ease-out forwards;
+    animation-delay: 0.1s;
+  }
+
+  .fade-in-up-delayed-3 {
+    animation: fadeInUp 0.5s ease-out forwards;
+    animation-delay: 0.15s;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .info-box {
+    @apply bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 flex gap-3 items-start;
+  }
 }
