@@ -65,7 +65,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-950">
       {/* Navigation */}
-      <nav className="sticky top-0 z-40 border-b border-gray-800 bg-gray-950/80 backdrop-blur-md">
+      <nav className="sticky top-0 z-50 border-b border-gray-800 bg-gray-950/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
           <h1 className="text-2xl font-bold text-white">
             Agency<span className="text-blue-500">Kit</span>

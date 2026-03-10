@@ -37,6 +37,7 @@ import {
   Phone,
   User,
   Sparkles,
+  Send,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -53,23 +54,33 @@ type ContactFormState = {
   email: string;
 };
 
+type CampaignContactWithContact = {
+  id: string;
+  campaign_id: string;
+  contact_id: string;
+  added_at: string;
+  contact: Contact;
+};
+
 export default function ReviewsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [campaigns, setCampaigns] = useState<ReviewCampaign[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [campaignContactsByCampaign, setCampaignContactsByCampaign] = useState<
+    Record<string, CampaignContactWithContact[]>
+  >({});
   const [loading, setLoading] = useState(true);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
-  const [sendingRequests, setSendingRequests] = useState(false);
+  const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null);
   const [campaignDialogOpen, setCampaignDialogOpen] = useState(false);
   const [campaignForm, setCampaignForm] = useState<CampaignFormState>({
     campaign_name: '',
     message_template:
-      'Hi {{name}}, this is {{business_name}}. Would you mind leaving us a quick review? {{review_link}}',
+      'Hi {name}, this is {business_name}. Would you mind leaving us a quick review? {review_link}',
     follow_up_template:
-      'Hi {{name}}, just a friendly reminder from {{business_name}} to leave a quick review when you have a moment. {{review_link}}',
+      'Hi {name}, just a friendly reminder from {business_name} to leave a quick review when you have a moment. {review_link}',
     follow_up_days: 3,
   });
   const [contactFormByCampaign, setContactFormByCampaign] = useState<
@@ -102,7 +113,7 @@ export default function ReviewsPage() {
         if (clientList.length > 0) {
           const firstId = clientList[0].id;
           setSelectedClientId(firstId);
-          await Promise.all([loadCampaigns(firstId), loadContacts(firstId)]);
+          await loadCampaigns(firstId);
         }
       } catch (err: any) {
         console.error('Error initializing review campaigns:', err);
@@ -127,7 +138,11 @@ export default function ReviewsPage() {
         .order('created_at', { ascending: false });
 
       if (campaignsError) throw campaignsError;
-      setCampaigns(data ?? []);
+      const list = data ?? [];
+      setCampaigns(list);
+
+      const campaignIds = list.map((c) => c.id);
+      await loadCampaignContacts(campaignIds);
     } catch (err: any) {
       console.error('Error loading campaigns:', err);
       setError(err.message || 'Failed to load campaigns.');
@@ -136,21 +151,43 @@ export default function ReviewsPage() {
     }
   }
 
-  async function loadContacts(clientId: string) {
+  async function loadCampaignContacts(campaignIds: string[]) {
+    if (!campaignIds.length) {
+      setCampaignContactsByCampaign({});
+      return;
+    }
     try {
       setContactsLoading(true);
       setError(null);
 
       const { data, error: contactsError } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false });
+        .from('campaign_contacts')
+        .select('id, campaign_id, contact_id, added_at, contacts(*)')
+        .in('campaign_id', campaignIds)
+        .order('added_at', { ascending: false });
 
       if (contactsError) throw contactsError;
-      setContacts(data ?? []);
+
+      const byCampaign: Record<string, CampaignContactWithContact[]> = {};
+
+      (data ?? []).forEach((row: any) => {
+        if (!row.contacts) return;
+        const cc: CampaignContactWithContact = {
+          id: row.id,
+          campaign_id: row.campaign_id,
+          contact_id: row.contact_id,
+          added_at: row.added_at,
+          contact: row.contacts as Contact,
+        };
+        if (!byCampaign[cc.campaign_id]) {
+          byCampaign[cc.campaign_id] = [];
+        }
+        byCampaign[cc.campaign_id].push(cc);
+      });
+
+      setCampaignContactsByCampaign(byCampaign);
     } catch (err: any) {
-      console.error('Error loading contacts:', err);
+      console.error('Error loading campaign contacts:', err);
       setError(err.message || 'Failed to load contacts.');
     } finally {
       setContactsLoading(false);
@@ -160,16 +197,15 @@ export default function ReviewsPage() {
   function handleClientChange(clientId: string) {
     setSelectedClientId(clientId);
     loadCampaigns(clientId);
-    loadContacts(clientId);
   }
 
   function openCampaignDialog() {
     setCampaignForm({
       campaign_name: '',
       message_template:
-        'Hi {{name}}, this is {{business_name}}. Would you mind leaving us a quick review? {{review_link}}',
+        'Hi {name}, this is {business_name}. Would you mind leaving us a quick review? {review_link}',
       follow_up_template:
-        'Hi {{name}}, just a friendly reminder from {{business_name}} to leave a quick review when you have a moment. {{review_link}}',
+        'Hi {name}, just a friendly reminder from {business_name} to leave a quick review when you have a moment. {review_link}',
       follow_up_days: 3,
     });
     setCampaignDialogOpen(true);
@@ -242,19 +278,62 @@ export default function ReviewsPage() {
 
     try {
       setError(null);
-      const { error: insertError } = await supabase.from('contacts').insert([
-        {
-          client_id: campaign.client_id,
-          name: form.name,
-          phone: form.phone || null,
-          email: form.email || null,
-        },
-      ]);
+      const { data: existingContacts, error: findError } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('client_id', campaign.client_id)
+        .or(
+          [
+            form.phone ? `phone.eq.${form.phone}` : '',
+            form.email ? `email.eq.${form.email}` : '',
+          ]
+            .filter(Boolean)
+            .join(',')
+        );
 
-      if (insertError) throw insertError;
+      if (findError) throw findError;
+
+      let contactId: string | null = null;
+
+      if (existingContacts && existingContacts.length > 0) {
+        contactId = existingContacts[0].id;
+      } else {
+        const { data: insertedContacts, error: insertError } = await supabase
+          .from('contacts')
+          .insert([
+            {
+              client_id: campaign.client_id,
+              name: form.name,
+              phone: form.phone || null,
+              email: form.email || null,
+            },
+          ])
+          .select('*');
+
+        if (insertError || !insertedContacts || !insertedContacts.length) {
+          throw insertError || new Error('Failed to insert contact');
+        }
+
+        contactId = insertedContacts[0].id;
+      }
+
+      if (!contactId) {
+        throw new Error('No contact ID resolved when adding contact');
+      }
+
+      const { error: linkError } = await supabase
+        .from('campaign_contacts')
+        .insert([
+          {
+            campaign_id: campaign.id,
+            contact_id: contactId,
+          },
+        ]);
+
+      if (linkError) throw linkError;
 
       updateContactForm(campaign.id, { name: '', phone: '', email: '' });
-      await loadContacts(campaign.client_id);
+      await loadCampaignContacts([campaign.id]);
     } catch (err: any) {
       console.error('Error adding contact:', err);
       setError(err.message || 'Failed to add contact.');
@@ -266,19 +345,111 @@ export default function ReviewsPage() {
     }
   }
 
-  async function handleSendRequests() {
-    if (!selectedClientId || campaigns.length === 0 || contacts.length === 0) return;
-    try {
-      setSendingRequests(true);
-      // This is a placeholder for actual sending logic (SMS/email integration).
-      await new Promise((resolve) => setTimeout(resolve, 800));
+  async function handleSendRequests(campaign: ReviewCampaign) {
+    const selectedClient = clients.find((c) => c.id === selectedClientId) || null;
+
+    if (!selectedClient?.google_review_link) {
       toast({
-        title: 'Review requests sent',
-        description: 'Your review requests are being processed.',
+        title: 'Missing review link',
+        description:
+          "This client doesn't have a Google Review link configured. Update it on the Clients page first.",
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const campaignContacts = campaignContactsByCampaign[campaign.id] ?? [];
+
+    const eligibleContacts = campaignContacts.filter(
+      (cc) =>
+        !cc.contact.review_requested &&
+        cc.contact.phone &&
+        cc.contact.phone.trim() !== ''
+    );
+
+    if (eligibleContacts.length === 0) {
+      toast({
+        title: 'No new contacts',
+        description: 'No new contacts to send to. Add contacts with phone numbers first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send review requests to ${eligibleContacts.length} contact${eligibleContacts.length > 1 ? 's' : ''} in "${campaign.campaign_name}" via SMS?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setSendingCampaignId(campaign.id);
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        toast({
+          title: 'Unable to send requests',
+          description: 'You must be signed in to send review requests.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const response = await fetch('/api/send-reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          campaignId: campaign.id,
+          contactIds: eligibleContacts.map((cc) => cc.contact_id),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        toast({
+          title: 'Failed to send review requests',
+          description: result.error || 'Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Review requests sent!',
+        description: `${result.sent} review request${result.sent > 1 ? 's' : ''} sent successfully.${result.failed > 0 ? ` ${result.failed} failed.` : ''}`,
+      });
+
+      await loadCampaigns(selectedClientId);
+    } catch (err: any) {
+      console.error('Unexpected error in handleSendRequests:', err);
+      toast({
+        title: 'Failed to send review requests',
+        description: err?.message || 'Please try again.',
+        variant: 'destructive',
       });
     } finally {
-      setSendingRequests(false);
+      setSendingCampaignId(null);
     }
+  }
+
+  function getCampaignContactCount(campaignId: string): number {
+    return (campaignContactsByCampaign[campaignId] ?? []).length;
+  }
+
+  function getCampaignEligibleCount(campaignId: string): number {
+    return (campaignContactsByCampaign[campaignId] ?? []).filter(
+      (cc) =>
+        !cc.contact.review_requested &&
+        cc.contact.phone &&
+        cc.contact.phone.trim() !== ''
+    ).length;
   }
 
   const selectedClient = clients.find((c) => c.id === selectedClientId) || null;
@@ -379,37 +550,23 @@ export default function ReviewsPage() {
         </Card>
       ) : (
         <>
-          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm text-gray-400">
-                Campaigns for{' '}
-                <span className="font-semibold text-white">
-                  {selectedClient.business_name}
-                </span>
-              </p>
+          {selectedClient && !selectedClient.google_review_link && (
+            <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center gap-3">
+              <span className="text-lg leading-none">⚠️</span>
+              <div className="text-xs text-amber-300">
+                This client doesn&apos;t have a Google Review link configured. Go to the
+                Clients page to add one before sending requests.
+              </div>
             </div>
-            <Button
-              variant="secondary"
-              onClick={handleSendRequests}
-              disabled={
-                sendingRequests ||
-                campaigns.length === 0 ||
-                contacts.length === 0
-              }
-              className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors duration-200"
-            >
-              {sendingRequests ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending review requests...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Send Review Requests
-                </>
-              )}
-            </Button>
+          )}
+
+          <div className="mb-6">
+            <p className="text-sm text-gray-400">
+              Campaigns for{' '}
+              <span className="font-semibold text-white">
+                {selectedClient.business_name}
+              </span>
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -449,187 +606,233 @@ export default function ReviewsPage() {
                   </CardContent>
                 </Card>
               ) : (
-                campaigns.map((campaign) => (
-                  <Card
-                    key={campaign.id}
-                    className="border-gray-800 bg-gray-900 transition-all duration-200 hover:border-gray-700 hover:-translate-y-0.5"
-                  >
-                    <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                      <div>
-                        <CardTitle className="text-white">
-                          {campaign.campaign_name}
-                        </CardTitle>
-                        <CardDescription className="mt-1 text-gray-400">
-                          {campaign.is_active ? (
-                            <span className="inline-flex items-center rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-400">
-                              Active
+                campaigns.map((campaign) => {
+                  const contactCount = getCampaignContactCount(campaign.id);
+                  const eligibleCount = getCampaignEligibleCount(campaign.id);
+                  const isSending = sendingCampaignId === campaign.id;
+
+                  return (
+                    <Card
+                      key={campaign.id}
+                      className="border-gray-800 bg-gray-900 transition-all duration-200 hover:border-gray-700 hover:-translate-y-0.5"
+                    >
+                      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                        <div>
+                          <CardTitle className="text-white">
+                            {campaign.campaign_name}
+                          </CardTitle>
+                          <CardDescription className="mt-1 flex items-center gap-2 text-gray-400">
+                            {campaign.is_active ? (
+                              <span className="inline-flex items-center rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-400">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-gray-700/40 px-2.5 py-0.5 text-xs font-medium text-gray-300">
+                                Inactive
+                              </span>
+                            )}
+                            <span className="inline-flex items-center rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-400">
+                              {contactCount} contact{contactCount !== 1 ? 's' : ''}
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full bg-gray-700/40 px-2.5 py-0.5 text-xs font-medium text-gray-300">
-                              Inactive
-                            </span>
-                          )}
-                        </CardDescription>
-                      </div>
-                      <div className="text-right text-xs text-gray-400">
-                        <div>Sent: {campaign.total_sent}</div>
-                        <div>Clicked: {campaign.total_clicked}</div>
-                        <div>Reviewed: {campaign.total_reviews}</div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-300">
-                        <div className="mb-1 font-semibold text-gray-200">
-                          Initial Message
+                          </CardDescription>
                         </div>
-                        <p className="whitespace-pre-wrap">
-                          {campaign.message_template}
-                        </p>
-                      </div>
-                      {campaign.follow_up_template && (
+                        <div className="text-right text-xs text-gray-400">
+                          <div>Sent: {campaign.total_sent}</div>
+                          <div>Clicked: {campaign.total_clicked}</div>
+                          <div>Reviewed: {campaign.total_reviews}</div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
                         <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-300">
-                          <div className="mb-1 flex items-center justify-between">
-                            <span className="font-semibold text-gray-200">
-                              Follow-up ({campaign.follow_up_days} days)
-                            </span>
+                          <div className="mb-1 font-semibold text-gray-200">
+                            Initial Message
                           </div>
                           <p className="whitespace-pre-wrap">
-                            {campaign.follow_up_template}
+                            {campaign.message_template}
                           </p>
                         </div>
-                      )}
-
-                      <div className="pt-2">
-                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                          Contacts for this client
-                        </p>
-                        {contactsLoading ? (
-                          <div className="space-y-2">
-                            {[1, 2, 3].map((i) => (
-                              <div
-                                key={i}
-                                className="rounded-md border border-gray-800 bg-gray-950 px-3 py-2"
-                              >
-                                <Skeleton className="h-4 w-40 bg-gray-800" />
-                              </div>
-                            ))}
-                          </div>
-                        ) : contacts.length === 0 ? (
-                          <p className="text-sm text-gray-400">
-                            No contacts yet. Add your first contact below.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {contacts.slice(0, 5).map((contact) => (
-                              <div
-                                key={contact.id}
-                                className="flex items-center justify-between rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-sm"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <User className="h-4 w-4 text-gray-400" />
-                                  <span className="text-white">
-                                    {contact.name}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-3 text-xs text-gray-400">
-                                  {contact.email && (
-                                    <span className="flex items-center gap-1">
-                                      <Mail className="h-3 w-3" />
-                                      {contact.email}
-                                    </span>
-                                  )}
-                                  {contact.phone && (
-                                    <span className="flex items-center gap-1">
-                                      <Phone className="h-3 w-3" />
-                                      {contact.phone}
-                                    </span>
-                                  )}
-                                  {contact.review_completed && (
-                                    <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-400">
-                                      Reviewed
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                            {contacts.length > 5 && (
-                              <p className="text-xs text-gray-500">
-                                Showing 5 of {contacts.length} contacts.
-                              </p>
-                            )}
+                        {campaign.follow_up_template && (
+                          <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-xs text-gray-300">
+                            <div className="mb-1 flex items-center justify-between">
+                              <span className="font-semibold text-gray-200">
+                                Follow-up ({campaign.follow_up_days} days)
+                              </span>
+                            </div>
+                            <p className="whitespace-pre-wrap">
+                              {campaign.follow_up_template}
+                            </p>
                           </div>
                         )}
-                      </div>
 
-                      <form
-                        className="mt-4 space-y-3 rounded-md border border-dashed border-gray-800 bg-gray-950 p-3"
-                        onSubmit={(e) => handleAddContact(e, campaign)}
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                          Add Contact
-                        </p>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-gray-300">
-                              Name
-                            </Label>
-                            <Input
-                              value={getContactForm(campaign.id).name}
-                              onChange={(e) =>
-                                updateContactForm(campaign.id, {
-                                  name: e.target.value,
-                                })
-                              }
-                              required
-                              className="h-8 bg-gray-900 text-white border-gray-800 text-xs"
-                              placeholder="Customer name"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-gray-300">
-                              Email
-                            </Label>
-                            <Input
-                              type="email"
-                              value={getContactForm(campaign.id).email}
-                              onChange={(e) =>
-                                updateContactForm(campaign.id, {
-                                  email: e.target.value,
-                                })
-                              }
-                              className="h-8 bg-gray-900 text-white border-gray-800 text-xs"
-                              placeholder="name@example.com"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-gray-300">
-                              Phone
-                            </Label>
-                            <Input
-                              value={getContactForm(campaign.id).phone}
-                              onChange={(e) =>
-                                updateContactForm(campaign.id, {
-                                  phone: e.target.value,
-                                })
-                              }
-                              className="h-8 bg-gray-900 text-white border-gray-800 text-xs"
-                              placeholder="+1 (555) 000-0000"
-                            />
-                          </div>
+                        {/* Send button for this campaign */}
+                        <Button
+                          onClick={() => handleSendRequests(campaign)}
+                          disabled={isSending || eligibleCount === 0 || !selectedClient?.google_review_link}
+                          className="w-full bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors duration-200"
+                        >
+                          {isSending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Sending...
+                            </>
+                          ) : eligibleCount === 0 ? (
+                            <>
+                              <Send className="mr-2 h-4 w-4" />
+                              No new contacts to send
+                            </>
+                          ) : (
+                            <>
+                              <Send className="mr-2 h-4 w-4" />
+                              Send to {eligibleCount} contact{eligibleCount > 1 ? 's' : ''}
+                            </>
+                          )}
+                        </Button>
+
+                        <div className="pt-2">
+                          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                            Contacts
+                          </p>
+                          {contactsLoading ? (
+                            <div className="space-y-2">
+                              {[1, 2, 3].map((i) => (
+                                <div
+                                  key={i}
+                                  className="rounded-md border border-gray-800 bg-gray-950 px-3 py-2"
+                                >
+                                  <Skeleton className="h-4 w-40 bg-gray-800" />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (campaignContactsByCampaign[campaign.id] ?? []).length === 0 ? (
+                            <p className="text-sm text-gray-400">
+                              No contacts yet. Add your first contact below.
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {(campaignContactsByCampaign[campaign.id] ?? [])
+                                .slice(0, 5)
+                                .map((cc) => {
+                                  const contact = cc.contact;
+                                  return (
+                                    <div
+                                      key={cc.id}
+                                      className="flex items-center justify-between rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-sm"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <User className="h-4 w-4 text-gray-400" />
+                                        <span className="text-white">
+                                          {contact.name}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-3 text-xs text-gray-400">
+                                        {contact.email && (
+                                          <span className="flex items-center gap-1">
+                                            <Mail className="h-3 w-3" />
+                                            {contact.email}
+                                          </span>
+                                        )}
+                                        {contact.phone && (
+                                          <span className="flex items-center gap-1">
+                                            <Phone className="h-3 w-3" />
+                                            {contact.phone}
+                                          </span>
+                                        )}
+                                        {contact.review_requested && !contact.review_completed && (
+                                          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-400">
+                                            Sent
+                                          </span>
+                                        )}
+                                        {contact.review_completed && (
+                                          <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-400">
+                                            Reviewed
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              {(campaignContactsByCampaign[campaign.id] ?? []).length >
+                                5 && (
+                                <p className="text-xs text-gray-500">
+                                  Showing 5 of{' '}
+                                  {(campaignContactsByCampaign[campaign.id] ?? []).length}{' '}
+                                  contacts.
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex justify-end">
-                          <Button
-                            type="submit"
-                            size="sm"
-                            className="bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-200"
-                          >
+
+                        <form
+                          className="mt-4 space-y-3 rounded-md border border-dashed border-gray-800 bg-gray-950 p-3"
+                          onSubmit={(e) => handleAddContact(e, campaign)}
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                             Add Contact
-                          </Button>
-                        </div>
-                      </form>
-                    </CardContent>
-                  </Card>
-                ))
+                          </p>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-gray-300">
+                                Name
+                              </Label>
+                              <Input
+                                value={getContactForm(campaign.id).name}
+                                onChange={(e) =>
+                                  updateContactForm(campaign.id, {
+                                    name: e.target.value,
+                                  })
+                                }
+                                required
+                                className="h-8 bg-gray-900 text-white border-gray-800 text-xs"
+                                placeholder="Customer name"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-gray-300">
+                                Email
+                              </Label>
+                              <Input
+                                type="email"
+                                value={getContactForm(campaign.id).email}
+                                onChange={(e) =>
+                                  updateContactForm(campaign.id, {
+                                    email: e.target.value,
+                                  })
+                                }
+                                className="h-8 bg-gray-900 text-white border-gray-800 text-xs"
+                                placeholder="name@example.com"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-gray-300">
+                                Phone
+                              </Label>
+                              <Input
+                                value={getContactForm(campaign.id).phone}
+                                onChange={(e) =>
+                                  updateContactForm(campaign.id, {
+                                    phone: e.target.value,
+                                  })
+                                }
+                                className="h-8 bg-gray-900 text-white border-gray-800 text-xs"
+                                placeholder="+44 7XXX XXXXXX"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end">
+                            <Button
+                              type="submit"
+                              size="sm"
+                              className="bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-200"
+                            >
+                              Add Contact
+                            </Button>
+                          </div>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </div>
 
@@ -654,7 +857,10 @@ export default function ReviewsPage() {
                   <div>
                     <p className="text-gray-400">Total Contacts</p>
                     <p className="text-2xl font-semibold text-white">
-                      {contacts.length}
+                      {Object.values(campaignContactsByCampaign).reduce(
+                        (sum, list) => sum + list.length,
+                        0
+                      )}
                     </p>
                   </div>
                   <div>
@@ -681,14 +887,33 @@ export default function ReviewsPage() {
               <Card className="border-gray-800 bg-gray-900">
                 <CardHeader>
                   <CardTitle className="text-white">
+                    Template Variables
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-gray-400">
+                  <p>
+                    Use these in your message templates:
+                  </p>
+                  <div className="space-y-2 rounded-md border border-gray-800 bg-gray-950 p-3 text-xs font-mono">
+                    <p><code className="text-blue-400">{'{name}'}</code> — Customer&apos;s name</p>
+                    <p><code className="text-blue-400">{'{customer_name}'}</code> — Same as above</p>
+                    <p><code className="text-blue-400">{'{business_name}'}</code> — Client&apos;s business name</p>
+                    <p><code className="text-blue-400">{'{review_link}'}</code> — Tracked review link</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-gray-800 bg-gray-900">
+                <CardHeader>
+                  <CardTitle className="text-white">
                     Best Practices
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm text-gray-400">
                   <p>
                     • Keep your message short, friendly, and personalized with
-                    variables like <code>{'{{name}}'}</code> and{' '}
-                    <code>{'{{business_name}}'}</code>.
+                    variables like <code className="text-blue-400">{'{name}'}</code> and{' '}
+                    <code className="text-blue-400">{'{business_name}'}</code>.
                   </p>
                   <p>
                     • Send follow-ups 3–7 days after the initial request for
@@ -697,6 +922,10 @@ export default function ReviewsPage() {
                   <p>
                     • Add both phone numbers and emails so you can reach
                     customers on their preferred channel.
+                  </p>
+                  <p>
+                    • Each campaign has its own contact list — use separate
+                    campaigns for different promotions or time periods.
                   </p>
                 </CardContent>
               </Card>
@@ -750,9 +979,9 @@ export default function ReviewsPage() {
                 className="min-h-[120px] bg-gray-800 text-white border-gray-700"
               />
               <p className="text-xs text-gray-500">
-                Use variables like <code>{'{{name}}'}</code>,{' '}
-                <code>{'{{business_name}}'}</code>, and{' '}
-                <code>{'{{review_link}}'}</code>.
+                Use variables: <code className="text-blue-400">{'{name}'}</code>,{' '}
+                <code className="text-blue-400">{'{business_name}'}</code>, and{' '}
+                <code className="text-blue-400">{'{review_link}'}</code>.
               </p>
             </div>
             <div className="space-y-2">
@@ -820,4 +1049,3 @@ export default function ReviewsPage() {
     </div>
   );
 }
-
