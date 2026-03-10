@@ -63,30 +63,29 @@ export default function Home() {
           </Link>
         </div>
 
-        <p className="text-gray-500 text-sm mt-6">No credit card required • Free plan available</p>
+        <p className="text-gray-500 text-sm mt-6">Free trial available • Cancel anytime</p>
       </section>
-
-      {/* Social Proof */}
+      {/* Value Props */}
       <section className="border-y border-gray-800 py-8">
         <div className="max-w-7xl mx-auto px-6 flex flex-wrap justify-center gap-8 text-center">
           <div>
-            <p className="text-3xl font-bold text-white">500+</p>
-            <p className="text-gray-500 text-sm">Active Agencies</p>
+            <p className="text-3xl font-bold text-white">5 min</p>
+            <p className="text-gray-500 text-sm">Setup Time</p>
           </div>
           <div className="w-px bg-gray-800 hidden sm:block"></div>
           <div>
-            <p className="text-3xl font-bold text-white">10,000+</p>
-            <p className="text-gray-500 text-sm">Local Businesses Served</p>
+            <p className="text-3xl font-bold text-white">$0</p>
+            <p className="text-gray-500 text-sm">To Get Started</p>
           </div>
           <div className="w-px bg-gray-800 hidden sm:block"></div>
           <div>
-            <p className="text-3xl font-bold text-white">1M+</p>
-            <p className="text-gray-500 text-sm">Reviews Generated</p>
+            <p className="text-3xl font-bold text-white">100%</p>
+            <p className="text-gray-500 text-sm">White-Labeled</p>
           </div>
           <div className="w-px bg-gray-800 hidden sm:block"></div>
           <div>
-            <p className="text-3xl font-bold text-white">4.9/5</p>
-            <p className="text-gray-500 text-sm">Platform Rating</p>
+            <p className="text-3xl font-bold text-white">1 Client</p>
+            <p className="text-gray-500 text-sm">Covers Your Subscription</p>
           </div>
         </div>
       </section>
