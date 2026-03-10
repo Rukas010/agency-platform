@@ -110,6 +110,7 @@ export default function ClientsPage() {
   const [resellerId, setResellerId] = useState<string>('');
   const [businessTypeQuery, setBusinessTypeQuery] = useState('');
   const [customBusinessType, setCustomBusinessType] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     business_name: '',
     business_type: '',
@@ -142,6 +143,7 @@ export default function ClientsPage() {
 
   async function loadClients() {
     try {
+      setErrorMessage(null);
       const reseller = await getReseller();
       if (!reseller) return;
 
@@ -158,6 +160,7 @@ export default function ClientsPage() {
       setFilteredClients(data || []);
     } catch (error) {
       console.error('Error loading clients:', error);
+      setErrorMessage('Something went wrong while loading clients. Please refresh or try again.');
     } finally {
       setLoading(false);
     }
@@ -229,6 +232,7 @@ export default function ClientsPage() {
       });
     } catch (error) {
       console.error('Error saving client:', error);
+      setErrorMessage('Unable to save this client right now. Please try again.');
       toast({
         title: 'Failed to save client',
         description: 'Please try again.',
@@ -247,6 +251,7 @@ export default function ClientsPage() {
       loadClients();
     } catch (error) {
       console.error('Error deleting client:', error);
+      setErrorMessage('Unable to delete this client right now. Please try again.');
       toast({
         title: 'Failed to delete client',
         description: 'Please try again.',
@@ -270,6 +275,12 @@ export default function ClientsPage() {
           Add Client
         </Button>
       </div>
+
+      {errorMessage && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {errorMessage}
+        </div>
+      )}
 
       <div className="mb-6 space-y-3">
         <div className="relative">
