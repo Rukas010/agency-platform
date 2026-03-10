@@ -65,30 +65,7 @@ export default function Home() {
 
         <p className="text-gray-500 text-sm mt-6">Free trial available • Cancel anytime</p>
       </section>
-      {/* Value Props */}
-      <section className="border-y border-gray-800 py-8">
-        <div className="max-w-7xl mx-auto px-6 flex flex-wrap justify-center gap-8 text-center">
-          <div>
-            <p className="text-3xl font-bold text-white">5 min</p>
-            <p className="text-gray-500 text-sm">Setup Time</p>
-          </div>
-          <div className="w-px bg-gray-800 hidden sm:block"></div>
-          <div>
-            <p className="text-3xl font-bold text-white">$0</p>
-            <p className="text-gray-500 text-sm">To Get Started</p>
-          </div>
-          <div className="w-px bg-gray-800 hidden sm:block"></div>
-          <div>
-            <p className="text-3xl font-bold text-white">100%</p>
-            <p className="text-gray-500 text-sm">White-Labeled</p>
-          </div>
-          <div className="w-px bg-gray-800 hidden sm:block"></div>
-          <div>
-            <p className="text-3xl font-bold text-white">1 Client</p>
-            <p className="text-gray-500 text-sm">Covers Your Subscription</p>
-          </div>
-        </div>
-      </section>
+    
 
       {/* Features */}
       <section id="features" className="max-w-7xl mx-auto px-6 py-24">
