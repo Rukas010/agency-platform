@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
   SelectLabel,
+  SelectGroup,
 } from '@/components/ui/select';
 import { Plus, Search, CreditCard as Edit, Trash2, Building2, Mail, Phone, Globe } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -443,9 +444,9 @@ export default function ClientsPage() {
                   }}
                 >
                   <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                    <SelectValue placeholder="Select type" />
+                    <SelectValue placeholder="Select business type" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-800 max-h-80">
+                  <SelectContent className="bg-gray-900 border-gray-800 max-h-80 overflow-y-auto">
                     {Object.entries(businessTypeCategories).map(
                       ([category, types]) => {
                         const filtered = types.filter((type) =>
@@ -455,7 +456,7 @@ export default function ClientsPage() {
                         );
                         if (filtered.length === 0) return null;
                         return (
-                          <div key={category}>
+                          <SelectGroup key={category}>
                             <SelectLabel className="px-2 py-1 text-xs font-semibold text-gray-400">
                               {category}
                             </SelectLabel>
@@ -468,7 +469,7 @@ export default function ClientsPage() {
                                 {type}
                               </SelectItem>
                             ))}
-                          </div>
+                          </SelectGroup>
                         );
                       }
                     )}
